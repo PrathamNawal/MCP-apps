@@ -9,6 +9,11 @@ A basic [FastMCP](https://gofastmcp.com) (Python) server that wraps the free
 |---|---|
 | `get_current_weather(city)` | Current temperature, humidity, wind and weather code |
 | `get_forecast(city, days=3)` | Daily min/max temperature and precipitation (1-16 days) |
+| `show_weather(city)` | **MCP App**: interactive card with current conditions, 7-day outlook, hourly rain chance, °C/°F toggle |
+| `score_activity(city, activity, date?)` | Scores each hour for run/walk/cycling/cricket/picnic/photography/commute and picks the best window (also called from the app's planner) |
+
+The app UI lives in `ui/weather.html` and is served as the `ui://weather/app.html` resource
+(MCP Apps extension). Hosts without MCP Apps support just get the structured data.
 
 ## Run
 
@@ -29,6 +34,7 @@ claude mcp add --transport http weather http://127.0.0.1:8000/mcp
 
 ```bash
 uv run python test_client.py   # calls the tools in-memory (needs internet)
+uv run python test_app.py      # checks the app tools + UI resource
 ```
 
 ## Deploy

@@ -4,6 +4,7 @@ WORKDIR /app
 COPY pyproject.toml uv.lock ./
 RUN uv sync --frozen --no-dev --no-install-project
 COPY server.py ./
+COPY ui ./ui
 ENV PORT=8000
 EXPOSE 8000
 CMD ["uv", "run", "--no-sync", "python", "server.py"]

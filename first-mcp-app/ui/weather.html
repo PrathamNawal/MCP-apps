@@ -1,0 +1,149 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Weather</title>
+<style>
+  :root { --bg:#f7f6f3; --card:#fff; --fg:#1c1b19; --mute:#6b6a66; --line:#e4e2dc; --accent:#2f6fed;
+          --good:#2e9e5b; --ok:#e0a526; --bad:#d9534f; color-scheme: light; }
+  @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
+          --bg:#1b1b1a; --card:#262624; --fg:#f1efea; --mute:#a3a29c; --line:#3a3a37; --accent:#6c9cff; color-scheme: dark; } }
+  :root[data-theme="dark"] { --bg:#1b1b1a; --card:#262624; --fg:#f1efea; --mute:#a3a29c; --line:#3a3a37; --accent:#6c9cff; color-scheme: dark; }
+  * { box-sizing: border-box; }
+  body { margin:0; padding:12px; background:transparent; color:var(--fg);
+         font:14px/1.4 system-ui,-apple-system,"Segoe UI",sans-serif; }
+  .card { background:var(--card); border:1px solid var(--line); border-radius:14px; padding:16px; }
+  .top { display:flex; justify-content:space-between; align-items:flex-start; gap:8px; }
+  .loc { font-size:13px; color:var(--mute); }
+  .temp { font-size:52px; font-weight:600; line-height:1; letter-spacing:-1px; }
+  .cond { font-size:15px; margin-top:4px; }
+  .icon { font-size:56px; line-height:1; }
+  .chips { display:flex; gap:8px; flex-wrap:wrap; margin-top:12px; }
+  .chip { border:1px solid var(--line); border-radius:999px; padding:3px 10px; font-size:12px; color:var(--mute); }
+  button { font:inherit; color:inherit; cursor:pointer; }
+  .unit { border:1px solid var(--line); background:transparent; border-radius:8px; padding:3px 9px; font-size:12px; }
+  h2 { font-size:12px; text-transform:uppercase; letter-spacing:.06em; color:var(--mute); margin:18px 0 8px; font-weight:600; }
+  .days { display:grid; grid-template-columns:repeat(7,minmax(0,1fr)); gap:6px; }
+  .day { border:1px solid var(--line); background:transparent; border-radius:10px; padding:8px 2px; text-align:center; }
+  .day[aria-pressed="true"] { border-color:var(--accent); box-shadow:0 0 0 1px var(--accent); }
+  .day .d { font-size:11px; color:var(--mute); } .day .i { font-size:20px; margin:2px 0; }
+  .day .hi { font-weight:600; } .day .lo { color:var(--mute); font-size:12px; }
+  .hours { display:flex; align-items:flex-end; gap:2px; height:90px; margin-top:6px; }
+  .hour { flex:1; display:flex; flex-direction:column; justify-content:flex-end; align-items:center; height:100%; min-width:0; }
+  .bar { width:100%; border-radius:3px 3px 0 0; background:var(--accent); opacity:.85; min-height:2px; }
+  .hl { display:flex; gap:2px; font-size:10px; color:var(--mute); margin-top:3px; }
+  .hl span { flex:1; text-align:center; overflow:hidden; }
+  .plan { display:flex; gap:8px; }
+  .plan input, .plan select { flex:1; min-width:0; padding:8px 10px; border-radius:8px; border:1px solid var(--line);
+         background:var(--bg); color:var(--fg); font:inherit; }
+  .go { background:var(--accent); color:#fff; border:0; border-radius:8px; padding:8px 14px; }
+  .tl { display:flex; gap:2px; margin-top:10px; }
+  .slot { flex:1; height:28px; border-radius:4px; min-width:0; }
+  .slot.best { outline:2px solid var(--fg); outline-offset:1px; }
+  .verdict { margin-top:10px; font-size:14px; } .muted { color:var(--mute); font-size:12px; }
+  .err { color:var(--bad); margin-top:8px; }
+</style>
+</head>
+<body>
+<div class="card" id="root"><div class="muted">Loading weather…</div></div>
+<script>
+"use strict";
+const ICONS = {0:"☀️",1:"🌤️",2:"⛅",3:"☁️",45:"🌫️",48:"🌫️",51:"🌦️",53:"🌦️",55:"🌧️",56:"🌧️",57:"🌧️",61:"🌧️",63:"🌧️",65:"🌧️",
+  66:"🌧️",67:"🌧️",71:"🌨️",73:"🌨️",75:"❄️",77:"❄️",80:"🌦️",81:"🌧️",82:"⛈️",85:"🌨️",86:"❄️",95:"⛈️",96:"⛈️",99:"⛈️"};
+const LABELS = {0:"Clear",1:"Mostly clear",2:"Partly cloudy",3:"Overcast",45:"Fog",48:"Fog",51:"Light drizzle",53:"Drizzle",55:"Heavy drizzle",
+  61:"Light rain",63:"Rain",65:"Heavy rain",71:"Light snow",73:"Snow",75:"Heavy snow",80:"Showers",81:"Showers",82:"Violent showers",95:"Thunderstorm",96:"Thunderstorm",99:"Thunderstorm"};
+const icon = c => ICONS[c] ?? "🌡️", label = c => LABELS[c] ?? "—";
+
+let data = null, useF = false, selDay = 0, plan = null, planBusy = false, planErr = "";
+const root = document.getElementById("root");
+const esc = s => String(s).replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+const T = c => Math.round(useF ? c * 9 / 5 + 32 : c) + "°";
+
+// ---- minimal MCP Apps (SEP-1865) host bridge over postMessage JSON-RPC ----
+let nextId = 1; const pending = new Map();
+function send(msg) { window.parent.postMessage({ jsonrpc: "2.0", ...msg }, "*"); }
+function request(method, params) {
+  return new Promise((resolve, reject) => { const id = nextId++; pending.set(id, { resolve, reject }); send({ id, method, params }); });
+}
+window.addEventListener("message", e => {
+  if (e.source !== window.parent) return;
+  const m = e.data; if (!m || m.jsonrpc !== "2.0") return;
+  if (m.id !== undefined && !m.method) {
+    const p = pending.get(m.id); if (!p) return; pending.delete(m.id);
+    m.error ? p.reject(new Error(m.error.message || "request failed")) : p.resolve(m.result); return;
+  }
+  if (m.method === "ui/notifications/tool-result") {
+    const sc = m.params && m.params.structuredContent;
+    if (sc && sc.daily) { data = sc; selDay = 0; plan = null; render(); }
+  } else if (m.method === "ui/notifications/host-context-changed") applyCtx(m.params);
+  else if (m.method === "ui/resource-teardown" && m.id !== undefined) send({ id: m.id, result: {} });
+});
+function applyCtx(ctx) { if (ctx && ctx.theme) document.documentElement.dataset.theme = ctx.theme; }
+async function callTool(name, args) {
+  const r = await request("tools/call", { name, arguments: args });
+  if (r.isError) throw new Error((r.content && r.content[0] && r.content[0].text) || "tool error");
+  return r.structuredContent;
+}
+function reportSize() { send({ method: "ui/notifications/size-changed", params: { height: Math.ceil(document.documentElement.getBoundingClientRect().height) } }); }
+new ResizeObserver(reportSize).observe(document.body);
+(async () => {
+  try {
+    const res = await request("ui/initialize", { protocolVersion: "2025-06-18",
+      appInfo: { name: "weather-app", version: "1.0.0" }, appCapabilities: {} });
+    applyCtx(res && res.hostContext); send({ method: "ui/notifications/initialized" });
+  } catch (_) { /* host without handshake: still render when results arrive */ }
+})();
+
+// ---- rendering ----
+function render() {
+  if (!data) return;
+  const c = data.current, d = data.daily, hrs = data.hourly;
+  const dayHours = hrs.filter(h => h.time.slice(0, 10) === d[selDay].date);
+  const max = Math.max(1, ...dayHours.map(h => h.precip_prob));
+  root.innerHTML = `
+    <div class="top"><div>
+      <div class="loc">${esc(data.location)}</div>
+      <div class="temp">${T(c.temperature)}</div>
+      <div class="cond">${label(c.weather_code)}</div></div>
+      <div style="text-align:right"><div class="icon">${icon(c.weather_code)}</div>
+      <button class="unit" id="unit">${useF ? "Switch to °C" : "Switch to °F"}</button></div></div>
+    <div class="chips"><span class="chip">💧 ${c.humidity}% humidity</span><span class="chip">💨 ${Math.round(c.wind_speed)} km/h</span>
+      <span class="chip">↑ ${T(d[0].max)} ↓ ${T(d[0].min)}</span><span class="chip">☔ ${d[0].precip} mm today</span></div>
+    <h2>7-day outlook</h2>
+    <div class="days">${d.map((x, i) => `<button class="day" data-i="${i}" aria-pressed="${i === selDay}">
+      <div class="d">${i === 0 ? "Today" : new Date(x.date + "T12:00").toLocaleDateString(undefined, { weekday: "short" })}</div>
+      <div class="i">${icon(x.weather_code)}</div><div class="hi">${T(x.max)}</div><div class="lo">${T(x.min)}</div></button>`).join("")}</div>
+    <h2>Rain chance by hour · ${new Date(d[selDay].date + "T12:00").toLocaleDateString(undefined, { weekday: "long" })}</h2>
+    <div class="hours">${dayHours.map(h => `<div class="hour" title="${h.time.slice(11)} · ${h.precip_prob}% · ${T(h.temperature)}">
+      <div class="bar" style="height:${Math.max(2, h.precip_prob / max * 100)}%"></div></div>`).join("")}</div>
+    <div class="hl">${dayHours.map((h, i) => `<span>${i % 3 === 0 ? h.time.slice(11, 13) : ""}</span>`).join("")}</div>
+    <h2>Plan something</h2>
+    <form class="plan" id="plan"><select id="act">${["run", "walk", "cycling", "cricket", "picnic", "photography", "commute"]
+      .map(a => `<option ${plan && plan.activity === a ? "selected" : ""}>${a}</option>`).join("")}</select>
+      <select id="pday">${d.map((x, i) => `<option value="${x.date}" ${i === selDay ? "selected" : ""}>${i === 0 ? "Today" : x.date}</option>`).join("")}</select>
+      <button class="go" ${planBusy ? "disabled" : ""}>${planBusy ? "…" : "Find best time"}</button></form>
+    ${planErr ? `<div class="err">${esc(planErr)}</div>` : ""}${plan ? renderPlan() : ""}`;
+  root.querySelector("#unit").onclick = () => { useF = !useF; render(); };
+  root.querySelectorAll(".day").forEach(b => b.onclick = () => { selDay = +b.dataset.i; render(); });
+  root.querySelector("#plan").onsubmit = onPlan;
+  reportSize();
+}
+const color = s => s >= 70 ? "var(--good)" : s >= 45 ? "var(--ok)" : "var(--bad)";
+function renderPlan() {
+  const b = plan.best;
+  return `<div class="tl">${plan.hours.map(h => `<div class="slot ${b && h.time === b.start ? "best" : ""}"
+      style="background:${color(h.score)}" title="${h.time.slice(11)} · score ${h.score} · ${T(h.temperature)} · ${h.precip_prob}% rain"></div>`).join("")}</div>
+    <div class="hl">${plan.hours.map((h, i) => `<span>${i % 3 === 0 ? h.time.slice(11, 13) : ""}</span>`).join("")}</div>
+    <div class="verdict">${esc(plan.summary)}</div><div class="muted">Green = good, amber = okay, red = skip. Outlined = best window.</div>`;
+}
+async function onPlan(ev) {
+  ev.preventDefault(); planBusy = true; planErr = ""; const activity = root.querySelector("#act").value;
+  const date = root.querySelector("#pday").value; render();
+  try { plan = await callTool("score_activity", { city: data.city, activity, date }); }
+  catch (e) { planErr = e.message; plan = null; }
+  planBusy = false; render();
+}
+</script>
+</body>
+</html>
