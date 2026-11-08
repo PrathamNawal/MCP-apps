@@ -39,7 +39,9 @@ async def _geocode(city: str) -> dict:
 
 @mcp.tool
 async def get_current_weather(city: str) -> dict:
-    """Get the current weather for a city (e.g. "Paris" or "Mumbai")."""
+    """Raw current-weather data for a city, as plain numbers. Only use this when you need the data
+    for calculations; for any user-facing weather question call `show_weather` instead, which
+    shows an interactive card."""
     place = await _geocode(city)
     data = await _get(
         FORECAST_URL,
@@ -58,7 +60,9 @@ async def get_current_weather(city: str) -> dict:
 
 @mcp.tool
 async def get_forecast(city: str, days: int = 3) -> dict:
-    """Get a daily forecast (1-16 days) for a city: min/max temperature and precipitation."""
+    """Raw daily forecast numbers (1-16 days) for a city. Only use this for forecasts longer than
+    7 days or when you need the data for calculations; for any user-facing weather or forecast
+    question (including "next 7 days") call `show_weather` instead, which shows an interactive card."""
     if not 1 <= days <= 16:
         raise ToolError("days must be between 1 and 16.")
     place = await _geocode(city)
@@ -159,8 +163,11 @@ def weather_app_ui() -> str:
 
 @mcp.tool(app={"resourceUri": UI_URI})
 async def show_weather(city: str) -> dict:
-    """Show an interactive weather card for a city: current conditions, a 7-day outlook,
-    hourly rain chances, and a planner that finds the best time for an activity."""
+    """DEFAULT tool for any weather question (current conditions, today, this week, "forecast",
+    "next 7 days", rain, temperature). Shows an interactive weather card for a city with current
+    conditions, a 7-day outlook, hourly rain chances and an activity planner. Call this first
+    instead of get_current_weather or get_forecast, and keep your text reply to one short sentence
+    since the card already shows the details."""
     return await _bundle(city)
 
 
