@@ -1,0 +1,10 @@
+[project]
+name = "first-mcp-app"
+version = "0.1.0"
+description = "A basic FastMCP server wrapping the Open-Meteo weather API"
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+    "fastmcp>=2.0",
+    "httpx>=0.27",
+]
