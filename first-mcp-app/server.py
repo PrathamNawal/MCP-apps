@@ -1,5 +1,7 @@
 """A basic MCP server that wraps the free Open-Meteo weather API (no API key needed)."""
 
+import os
+
 import httpx
 from fastmcp import FastMCP
 from fastmcp.exceptions import ToolError
@@ -72,4 +74,8 @@ async def get_forecast(city: str, days: int = 3) -> dict:
 
 
 if __name__ == "__main__":
-    mcp.run(transport="http", host="127.0.0.1", port=8000)
+    # Hosts like Render/Fly/Railway/Cloud Run set PORT and need 0.0.0.0.
+    # Locally this defaults to 127.0.0.1:8000.
+    port = int(os.environ.get("PORT", "8000"))
+    host = os.environ.get("HOST", "0.0.0.0" if "PORT" in os.environ else "127.0.0.1")
+    mcp.run(transport="http", host=host, port=port)

@@ -30,3 +30,16 @@ claude mcp add --transport http weather http://127.0.0.1:8000/mcp
 ```bash
 uv run python test_client.py   # calls the tools in-memory (needs internet)
 ```
+
+## Deploy
+
+The server reads `PORT` (and optional `HOST`) so it runs on any container host.
+A `Dockerfile` and a Render blueprint (`render.yaml`) are included.
+
+1. Push this repo to GitHub.
+2. Render: New -> Blueprint -> pick this repo (root directory `first-mcp-app`).
+   Any other Docker host (Fly.io, Railway, Cloud Run) works the same way.
+3. Your MCP URL is `https://<your-service>.onrender.com/mcp`.
+4. In claude.ai: Settings -> Connectors -> Add custom connector -> paste the URL.
+
+Note: the server has no authentication, so anyone with the URL can call it.
